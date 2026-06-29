@@ -257,7 +257,7 @@ def get_filter_response(
         or any filter that is implemented in :mod:`NuRadioReco.detector.filterresponse`.
         In this case the passband parameter is ignored
     order: int
-        for a butterworth filter: specifies the order of the filter
+        for a butterworth / Chebyshev filter: specifies the order of the filter
     rp: float
         The maximum ripple allowed below unity gain in the passband.
         Specified in decibels, as a positive number.
