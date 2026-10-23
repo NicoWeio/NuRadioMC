@@ -38,6 +38,9 @@ from the NOAA ETOPO1 dataset via www.opentopodata.org.
   stored in `AntennaPattern._vel`.
 
 bugfixes:
+- Keep Python and Numba analytic ray-tracing helpers separate per instance for both
+  single-layer and multilayer tracers; honor compile_numba=False without changing
+  shared module functions when another tracer enables Numba.
 - `NuRadioReco.utilities` light modules (units, fft, trace_utilities, ...; listed in the package docstring) can now be imported
   with only numpy, scipy and matplotlib: radiotools, astropy, the `NuRadioReco.detector`/`framework` packages etc. are imported lazily
   and the version lookup in `__init__` is guarded.

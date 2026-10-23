@@ -1,5 +1,6 @@
 set -e
 cd NuRadioMC/test/SignalProp/
+python3 -m unittest discover -p test_backend_isolation.py
 python3 T01test_python_vs_cpp.py
 python3 T02test_analytic_D_T.py
 python3 T04MooresBay.py

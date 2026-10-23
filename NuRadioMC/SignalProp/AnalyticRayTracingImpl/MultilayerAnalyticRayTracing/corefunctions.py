@@ -3,7 +3,7 @@ import numpy as np
 
 from NuRadioMC.SignalProp.propagation import solution_types_revert
 
-from NuRadioMC.SignalProp.AnalyticRayTracingImpl.maybenumba import njit
+from NuRadioMC.SignalProp.AnalyticRayTracingImpl.backends import numba_candidate
 
 
 NumbaList = list # fallback for get_path_segments function
@@ -58,7 +58,7 @@ def layers_to_arrays(layers):
 
     return z_min, z_max, n_ice, delta_n, z0
 
-@njit(cache=True)
+@numba_candidate(cache=True)
 def init_layer_arrays(z_min, z_max, n_ice, delta_n, z0):
     """
     Validate and return layer arrays.
@@ -98,7 +98,7 @@ def init_layer_arrays(z_min, z_max, n_ice, delta_n, z0):
 
     return z_min, z_max, n_ice, delta_n, z0
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def get_layer_index(z, z_min, z_max):
     """
     Determine the layer index corresponding to a given depth.
@@ -127,7 +127,7 @@ def get_layer_index(z, z_min, z_max):
     return -1
 
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def analytic_F(z, c0, n_ice, delta_n, z0):
     """
     Evaluate the analytic ray integral F(z) for an exponential index profile.
@@ -192,7 +192,7 @@ def analytic_F(z, c0, n_ice, delta_n, z0):
 
     return float(np.real(val))
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def compute_offsets(c0, y_start, z_start, layers, get_intersection_point = False):
     """
     Compute horizontal offset constants for all layers.
@@ -270,7 +270,7 @@ def compute_offsets(c0, y_start, z_start, layers, get_intersection_point = False
 
 
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def compute_offsets_plotting(c0, y_start, z_start, layers, get_intersection_point = False):
     """
     This function takes the role of compute_offsets for situations where we are interested in creating the complete path that a signal takes 
@@ -376,7 +376,7 @@ def compute_offsets_plotting(c0, y_start, z_start, layers, get_intersection_poin
     else:
         return c1, idx_start, np.zeros(n_layers -1), np.zeros(n_layers -1)
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def build_y_field(c0, z_array, layers, c1):
     """
     Evaluate the horizontal ray trajectory y(z).
@@ -419,7 +419,7 @@ def build_y_field(c0, z_array, layers, c1):
 
     return y, layer_idx
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def evaluate_y(c0, c1, z, layers):
     """
     Evaluate the horizontal ray coordinate at a given depth.
@@ -462,7 +462,7 @@ def evaluate_y(c0, c1, z, layers):
     return float(f + c1[idx])
 
 
-@njit(cache=True)
+@numba_candidate(cache=True)
 def find_z_turn(c0, layers):
     """
     Determine the depth of the ray turning point.
@@ -520,7 +520,7 @@ def find_z_turn(c0, layers):
     return np.max(z_max)
 
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def get_turning_point(c0, y_start, z_start, layers, c1=None,
                       downgoing=False, with_air=False):
     """
@@ -580,7 +580,7 @@ def get_turning_point(c0, y_start, z_start, layers, c1=None,
 
     return y_turn, z_turn
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def get_delta_y(c0, y1, z1, y2, z2, layers, c0range,
                 downgoing, with_air):
     """
@@ -664,7 +664,7 @@ def get_delta_y(c0, y1, z1, y2, z2, layers, c0range,
         y_fit = evaluate_y(c0, c1, z2, layers)
         return y2 - y_fit
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def get_n_1D(z, layers):
     """
     Evaluate the refractive index at a given depth.
@@ -693,7 +693,7 @@ def get_n_1D(z, layers):
 
     return n_ice[idx] - delta_n[idx] * np.exp(z / z0[idx])
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def get_c0_from_theta(z_start, theta, layers):
     """
     Convert a launch angle to the corresponding ray parameter.
@@ -724,7 +724,7 @@ def get_c0_from_theta(z_start, theta, layers):
     return 1.0 / p
 
 
-@njit(cache = True)
+@numba_candidate(cache = True)
 def get_skim_angle(y1, z1, zskim, layers):
     """
     Compute the critical launch angle for a ray that skims a given depth.
@@ -775,7 +775,7 @@ DIRECT = solution_types_revert['direct']
 REFLECTED = solution_types_revert['reflected']
 REFRACTED = solution_types_revert['refracted']
 
-@njit(cache=True)
+@numba_candidate(cache=True)
 def determine_solution_type(y1, z1, y2, z2, c0, layers, downgoing=False, with_air=False):
     """
     Determine the physical type of a ray tracing solution.

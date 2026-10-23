@@ -96,6 +96,9 @@ class ray_tracing(ray_tracing_base):
             If True, numba-compile the standalone python functions used as a fallback when not
             using the CPP backend. Only relevant if `use_cpp` is (or resolves to) False.
             If None, numba is used whenever it is available.
+            If False, this instance uses Python ray-tracing helpers even when
+            other instances use Numba. Independent utility modules, such as
+            attenuation, may still use their own optional acceleration.
         """
         self.__logger = logging.getLogger('NuRadioMC.ray_tracing')
         self.__logger.setLevel(log_level)

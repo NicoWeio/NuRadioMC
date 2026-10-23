@@ -94,13 +94,17 @@ from NuRadioMC.SignalProp.propagation_base_class import ray_tracing_base
 import logging
 logger = logging.getLogger("NuRadioMC.analytic_ray_tracing")
 
-NumbaList = list # fallback for get_path_segments function
-
+# Preserve the standalone helper imports for existing callers. Instance methods
+# select their own backend below.
 from NuRadioMC.SignalProp.AnalyticRayTracingImpl.MultilayerAnalyticRayTracing.corefunctions import get_layer_index, get_n_1D, analytic_F, compute_offsets, build_y_field, evaluate_y, find_z_turn, get_turning_point, get_c0_from_theta, get_delta_y, get_skim_angle, determine_solution_type
 from NuRadioMC.SignalProp.AnalyticRayTracingImpl.MultilayerAnalyticRayTracing.solver import find_solutions, find_solutions_bulk, reduce_solutions
 from NuRadioMC.SignalProp.AnalyticRayTracingImpl.MultilayerAnalyticRayTracing.getrayparameters import get_path, get_path_segments, get_path_length_analytic, get_travel_time_analytic, get_launch_angle, get_receiving_angle, get_reflection_angle, get_attenuation_along_path, get_focusing_factor, get_launch_vector, get_receiving_vector, ds_dz_layer, get_path_length_numerical, get_travel_time_numerical
 from NuRadioMC.SignalProp.AnalyticRayTracingImpl.MultilayerAnalyticRayTracing.planewave import get_inice_quantities, get_time_difference_plane_wave_analytic
 
+from NuRadioMC.SignalProp.AnalyticRayTracingImpl.backends import get_backend
+from NuRadioMC.SignalProp.AnalyticRayTracingImpl.MultilayerAnalyticRayTracing import (
+    corefunctions, getrayparameters, planewave, solver,
+)
 
 
 import logging
@@ -133,6 +137,11 @@ class multi_layer_ray_tracing_2D():
         n_frequencies_integration: int
             specifies for how many frequencies the signal attenuation is being calculated
             (default: None -> 100 (see `ray_tracing_base._set__set_arguments`))
+        compile_numba: bool or None
+            Select Numba helpers for this instance (default True). If None,
+            use Numba when available. If False, use Python ray-tracing helpers,
+            independently of other instances. Fall back to Python if Numba is
+            unavailable. Independent utilities may use their own acceleration.
 
         """
         self._logger = logging.getLogger('NuRadioMC.multi_layer_ray_tracing_2D')
@@ -149,70 +158,20 @@ class multi_layer_ray_tracing_2D():
         self.__n_frequencies_integration = n_frequencies_integration
         self.dz = dz
         self.use_cpp = False # For compatibility with old raytracer
-        #self.compile_numba = None # For compatibility with old raytracer
-        self.compile_numba = compile_numba
-
-        numba_available = False
-
-
         try:
-            from numba import njit
-            from numba.core.registry import CPUDispatcher
-            from numba.typed import List as NumbaList
+            import numba  # noqa: F401 - availability check
             numba_available = True
-            self._logger.status("Numba version of raytracer is available")
         except ImportError:
-            self._logger.warning("Numba is not available")
-            NumbaList = list # fallback for get_path_segments function
             numba_available = False
 
-        use_ensure_jitted = False
-
-        if compile_numba and use_ensure_jitted:
-
-            def ensure_jitted(func): # Function to check if already jitted or not and use jitted if available
-                if isinstance(func, CPUDispatcher):
-                    return func
-                return njit(cache=True)(func)
-
-            if numba_available:
-
-                global get_layer_index, analytic_F, compute_offsets, build_y_field, evaluate_y, find_z_turn
-                global get_turning_point, get_delta_y, get_n_1D, get_c0_from_theta, get_skim_angle
-                global determine_solution_type, get_path_segments, get_path_length_analytic, get_launch_angle
-                global get_receiving_angle, get_reflection_angle, get_travel_time_analytic, ds_dz_layer, get_focusing_factor
-                global get_inice_quantities, get_time_difference_plane_wave_analytic
-
-                try:
-                    get_layer_index = ensure_jitted(get_layer_index)
-                    analytic_F = ensure_jitted(analytic_F)
-                    compute_offsets = ensure_jitted(compute_offsets)
-                    build_y_field = ensure_jitted(build_y_field)
-                    evaluate_y = ensure_jitted(evaluate_y)
-                    find_z_turn = ensure_jitted(find_z_turn)
-                    get_turning_point = ensure_jitted(get_turning_point)
-                    get_delta_y = ensure_jitted(get_delta_y)
-                    get_n_1D = ensure_jitted(get_n_1D)
-                    get_c0_from_theta = ensure_jitted(get_c0_from_theta)
-                    get_skim_angle = ensure_jitted(get_skim_angle)
-                    determine_solution_type = ensure_jitted(determine_solution_type)
-                    get_path_segments = ensure_jitted(get_path_segments)
-                    get_path_length_analytic = ensure_jitted(get_path_length_analytic)
-                    get_launch_angle = ensure_jitted(get_launch_angle)
-                    get_receiving_angle = ensure_jitted(get_receiving_angle)
-                    get_reflection_angle = ensure_jitted(get_reflection_angle)
-                    get_travel_time_analytic = ensure_jitted(get_travel_time_analytic)
-                    ds_dz_layer = ensure_jitted(ds_dz_layer)
-                    get_focusing_factor = ensure_jitted(get_focusing_factor)
-                    get_inice_quantities = ensure_jitted(get_inice_quantities)
-                    get_time_difference_plane_wave_analytic = ensure_jitted(get_time_difference_plane_wave_analytic)
-
-                    self.use_cpp = False
-
-                except Exception:
-
-                    self._logger.warning("Error in compiling methods using jit - proceeding without numba")
-                    compile_numba = False
+        self.compile_numba = numba_available if compile_numba is None else bool(compile_numba and numba_available)
+        modules = (corefunctions, getrayparameters, planewave, solver)
+        try:
+            self._backend = get_backend(modules, self.compile_numba)
+        except Exception as e:
+            self._logger.warning("Could not prepare Numba helpers: %s; using Python", e)
+            self.compile_numba = False
+            self._backend = get_backend(modules, False)
 
     @property
     def _layers_arr(self):
@@ -234,7 +193,7 @@ class multi_layer_ray_tracing_2D():
             downgoing = True
 
 
-        solution_type = determine_solution_type(y1, z1, y2, z2, c0, self._layers_arr, downgoing, with_air)
+        solution_type = self._backend.determine_solution_type(y1, z1, y2, z2, c0, self._layers_arr, downgoing, with_air)
 
         self._logger.info(
             "solution_type | x1=%s x2=%s c0=%s type=%s",
@@ -257,9 +216,9 @@ class multi_layer_ray_tracing_2D():
         small_dx = dx < 5 * units.m
 
         if horizontal or small_dx:
-            solver_chain = [find_solutions_bulk, find_solutions]
+            solver_chain = [self._backend.find_solutions_bulk, self._backend.find_solutions]
         else:
-            solver_chain = [find_solutions, find_solutions_bulk]
+            solver_chain = [self._backend.find_solutions, self._backend.find_solutions_bulk]
 
         solutions = []
         for solver in solver_chain:
@@ -274,20 +233,20 @@ class multi_layer_ray_tracing_2D():
 
         if reduce:
             try:
-                return reduce_solutions(solutions, with_air)
+                return self._backend.reduce_solutions(solutions, with_air)
             except Exception:
                 return solutions
 
         return solutions
 
     def get_n_2D(self, x1):
-        n_z = get_n_1D(x1[1],self._layers_arr)
+        n_z = self._backend.get_n_1D(x1[1],self._layers_arr)
         return n_z
 
 
     def get_travel_time_analytic(self, x1, x2, c0, *_, **__):
 
-        travel_time = get_travel_time_analytic(c0, x1, x2, self._layers_arr)
+        travel_time = self._backend.get_travel_time_analytic(c0, x1, x2, self._layers_arr)
 
         solution_type = self.determine_solution_type(x1, x2, c0)
 
@@ -310,7 +269,7 @@ class multi_layer_ray_tracing_2D():
     
     def get_travel_time(self,x1, x2, c0, *_, **__):
 
-        travel_time = get_travel_time_numerical(c0, x1, x2, self._layers_arr)
+        travel_time = self._backend.get_travel_time_numerical(c0, x1, x2, self._layers_arr)
 
         self._logger.info(
             "get_ptravel_time_numerical | x1=%s x2=%s c0=%s travel_time=%s",
@@ -325,7 +284,7 @@ class multi_layer_ray_tracing_2D():
 
     def get_path_length_analytic(self, x1, x2, c0, *_, **__):
 
-        path_length = get_path_length_analytic(c0, x1, x2, self._layers_arr)
+        path_length = self._backend.get_path_length_analytic(c0, x1, x2, self._layers_arr)
 
         solution_type = self.determine_solution_type(x1, x2, c0)
 
@@ -346,7 +305,7 @@ class multi_layer_ray_tracing_2D():
     
     def get_path_length(self,x1, x2, c0, *_, **__):
 
-        path_length = get_path_length_numerical(c0, x1, x2, self._layers_arr)
+        path_length = self._backend.get_path_length_numerical(c0, x1, x2, self._layers_arr)
 
         self._logger.info(
             "get_path_length_numerical | x1=%s x2=%s c0=%s path_length=%s",
@@ -359,15 +318,15 @@ class multi_layer_ray_tracing_2D():
         return path_length
 
     def get_launch_vector(self, x1, x2, c0):
-        return get_launch_vector(c0, x1, x2, self._layers_arr)
+        return self._backend.get_launch_vector(c0, x1, x2, self._layers_arr)
 
     def get_receive_vector(self, x1, x2, c0):
-        return get_receiving_vector(c0, x1, x2, self._layers_arr)
+        return self._backend.get_receiving_vector(c0, x1, x2, self._layers_arr)
 
     #@log_timing()
     def get_launch_angle(self, x1, c0, *_, **__):
 
-        launch_angle = get_launch_angle(c0, x1, x1, self._layers_arr)
+        launch_angle = self._backend.get_launch_angle(c0, x1, x1, self._layers_arr)
 
         self._logger.info(
             "get_launch_angle | x1=%s c0=%s launch_angle=%s",
@@ -381,7 +340,7 @@ class multi_layer_ray_tracing_2D():
 
     def get_receive_angle(self, x1, x2, c0, *_, **__):
 
-        receive_angle = get_receiving_angle(c0, x1, x2, self._layers_arr)
+        receive_angle = self._backend.get_receiving_angle(c0, x1, x2, self._layers_arr)
 
         self._logger.info(
             "get_receive_angle | x1=%s x2=%s c0=%s receive_angle=%s",
@@ -396,7 +355,7 @@ class multi_layer_ray_tracing_2D():
 
     def get_reflection_angle(self, x1, x2, c0, *_, **__):
 
-        reflection_angle = get_reflection_angle(c0, x1, x2, self._layers_arr)
+        reflection_angle = self._backend.get_reflection_angle(c0, x1, x2, self._layers_arr)
 
         self._logger.info(
             "get_reflection_angle | x1=%s x2=%s c0=%s reflection_angle=%s",
@@ -410,20 +369,20 @@ class multi_layer_ray_tracing_2D():
 
 
     def get_path_reflections(self, x1, x2, c0, npoints=1000,*_, **__):
-        return get_path(c0, x1, x2, self._layers_arr, npoints)
+        return self._backend.get_path(c0, x1, x2, self._layers_arr, npoints)
 
     def get_path_segments(self, x1, x2, c0, *_, **__):
-        return get_path_segments(c0, x1, x2, self._layers_arr)
+        return self._backend.get_path_segments(c0, x1, x2, self._layers_arr)
 
     def get_turning_point(self, x1, c0):
         with_air = False
         if x1[1] > 0.0 : with_air = True
-        return get_turning_point(x1[0], x1[1], c0, self._layers_arr, with_air=with_air)
+        return self._backend.get_turning_point(x1[0], x1[1], c0, self._layers_arr, with_air=with_air)
 
 
     def get_focusing_analytic(self, x1, x2, c0, *_, **__):
 
-        focusing_factor = get_focusing_factor(c0, x1, x2, self._layers_arr)
+        focusing_factor = self._backend.get_focusing_factor(c0, x1, x2, self._layers_arr)
 
         self._logger.info(
             "get_focusing_analytic | x1=%s x2=%s c0=%s focusing_factor=%s",
@@ -490,7 +449,7 @@ class multi_layer_ray_tracing_2D():
         dz = self.dz
         freqs = self.__get_frequencies_for_attenuation(frequency, max_detector_frequency)
 
-        attenuation_factor = get_attenuation_along_path(c0, x1, x2, self._layers_arr, frequency, freqs, attenuation_model, dz)
+        attenuation_factor = self._backend.get_attenuation_along_path(c0, x1, x2, self._layers_arr, frequency, freqs, attenuation_model, dz)
 
         self._logger.info(
             "get_attenuation_along_path | x1=%s x2=%s c0=%s attenuation_factor=%s",
@@ -504,6 +463,6 @@ class multi_layer_ray_tracing_2D():
 
     def get_time_difference_plane_wave_analytic(self, x1, x2, src_zenith, src_azimuth, azimuth_convention = 'nuradio'):
 
-        dt = get_time_difference_plane_wave_analytic(x1, x2, src_zenith, src_azimuth, self._layers_arr, azimuth_convention)
+        dt = self._backend.get_time_difference_plane_wave_analytic(x1, x2, src_zenith, src_azimuth, self._layers_arr, azimuth_convention)
 
         return dt

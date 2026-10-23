@@ -7,10 +7,10 @@ from NuRadioReco.utilities import units, constants
 from NuRadioMC.SignalProp.AnalyticRayTracingImpl.MultilayerAnalyticRayTracing.corefunctions import compute_offsets, evaluate_y, get_n_1D
 from NuRadioMC.SignalProp.AnalyticRayTracingImpl.MultilayerAnalyticRayTracing.getrayparameters import get_travel_time_analytic
 
-from NuRadioMC.SignalProp.AnalyticRayTracingImpl.maybenumba import njit
+from NuRadioMC.SignalProp.AnalyticRayTracingImpl.backends import numba_candidate
 
 
-@njit(cache=True)
+@numba_candidate(cache=True)
 def get_inice_quantities(pos, theta_air, layers):
     """
     Compute the in-ice propagation quantities for a ray entering the surface
@@ -68,7 +68,7 @@ def get_inice_quantities(pos, theta_air, layers):
 
     return horizontal_offset, travel_time
 
-@njit(cache=True)
+@numba_candidate(cache=True)
 def get_time_difference_plane_wave_analytic(pos1, pos2, theta_air, phi_air, layers, azimuth_convention = 'nuradio'):
     """
     Compute the relative arrival time of a plane wave between two receivers.
